@@ -14,7 +14,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -94,16 +93,6 @@ class MainActivity : AppCompatActivity() {
             safeStart(Intent(Settings.ACTION_SETTINGS), "系统设置")
         }
 
-        // 手动输入包名直达（枚举被限制时的兜底）
-        val pkgInput = findViewById<EditText>(R.id.pkg_input)
-        findViewById<Button>(R.id.btn_go_pkg).setOnClickListener {
-            val pkg = pkgInput.text.toString().trim()
-            if (pkg.isEmpty()) {
-                toast("先输入包名")
-                return@setOnClickListener
-            }
-            showActions(AppEntry(pkg, pkg, false, null, "", 0))
-        }
         findViewById<Button>(R.id.btn_diag).setOnClickListener { showDiag() }
 
         loadApps()

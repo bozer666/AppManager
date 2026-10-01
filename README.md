@@ -9,7 +9,6 @@
   每行显示应用名、包名、版本号（含 versionCode）
   （用 getInstalledApplications / getInstalledPackages / launcher 查询三路合并，
   顶部显示总数；若车机限制枚举，可点「诊断」看各路返回数）
-- 手动输入包名直达：列表刷不出来时，直接输包名打开 9 个直达/管理入口
 - 点某个应用，直达：
   - 允许安装未知应用
   - 应用信息
