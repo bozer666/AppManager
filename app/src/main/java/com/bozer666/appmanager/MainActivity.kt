@@ -3,9 +3,11 @@ package com.bozer666.appmanager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
@@ -28,7 +30,9 @@ data class AppEntry(
     val label: String,
     val packageName: String,
     val isSystem: Boolean,
-    val icon: Drawable?
+    val icon: Drawable?,
+    val versionName: String,
+    val versionCode: Long
 )
 
 class MainActivity : AppCompatActivity() {
@@ -95,20 +99,40 @@ class MainActivity : AppCompatActivity() {
                 toast("先输入包名")
                 return@setOnClickListener
             }
-            showActions(AppEntry(pkg, pkg, false, null))
+            showActions(AppEntry(pkg, pkg, false, null, "", 0))
         }
         findViewById<Button>(R.id.btn_diag).setOnClickListener { showDiag() }
 
         loadApps()
     }
 
-    private fun toEntry(pm: PackageManager, info: ApplicationInfo): AppEntry {
+    private fun toEntry(
+        pm: PackageManager,
+        info: ApplicationInfo,
+        versionName: String,
+        versionCode: Long
+    ): AppEntry {
         return AppEntry(
             label = try { info.loadLabel(pm).toString() } catch (_: Exception) { info.packageName },
             packageName = info.packageName,
             isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-            icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
+            icon = try { info.loadIcon(pm) } catch (_: Exception) { null },
+            versionName = versionName,
+            versionCode = versionCode
         )
+    }
+
+    private fun verCodeOf(pi: PackageInfo): Long {
+        return try {
+            if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()
+        } catch (_: Exception) { 0L }
+    }
+
+    private fun queryVersion(pm: PackageManager, pkg: String): Pair<String, Long> {
+        return try {
+            val pi = pm.getPackageInfo(pkg, 0)
+            (pi.versionName ?: "") to verCodeOf(pi)
+        } catch (_: Exception) { "" to 0L }
     }
 
     private fun loadApps() {
@@ -118,31 +142,40 @@ class MainActivity : AppCompatActivity() {
             val pm = packageManager
             val map = LinkedHashMap<String, AppEntry>()
 
-            // 来源 A：getInstalledApplications
+            // 来源 B 先行：PackageInfo 自带 versionName / versionCode
             try {
-                val listA = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                countA = listA.size
-                listA.forEach { map[it.packageName] = toEntry(pm, it) }
-            } catch (_: Exception) { countA = -2 }
-
-            // 来源 B：getInstalledPackages
-            try {
-                val listB = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+                val listB = pm.getInstalledPackages(0)
                 countB = listB.size
                 listB.forEach { pkg ->
                     val ai = pkg.applicationInfo ?: return@forEach
-                    if (!map.containsKey(pkg.packageName)) map[pkg.packageName] = toEntry(pm, ai)
+                    map[pkg.packageName] =
+                        toEntry(pm, ai, pkg.versionName ?: "", verCodeOf(pkg))
                 }
             } catch (_: Exception) { countB = -2 }
 
-            // 来源 C：launcher 可见应用
+            // 来源 A：getInstalledApplications（补漏）
+            try {
+                val listA = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                countA = listA.size
+                listA.forEach { ai ->
+                    if (!map.containsKey(ai.packageName)) {
+                        val (vn, vc) = queryVersion(pm, ai.packageName)
+                        map[ai.packageName] = toEntry(pm, ai, vn, vc)
+                    }
+                }
+            } catch (_: Exception) { countA = -2 }
+
+            // 来源 C：launcher 可见应用（补漏）
             try {
                 val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                 val listC = pm.queryIntentActivities(launcher, 0)
                 countC = listC.size
                 listC.forEach { ri ->
                     val pkg = ri.activityInfo.packageName
-                    if (!map.containsKey(pkg)) map[pkg] = toEntry(pm, ri.activityInfo.applicationInfo)
+                    if (!map.containsKey(pkg)) {
+                        val (vn, vc) = queryVersion(pm, pkg)
+                        map[pkg] = toEntry(pm, ri.activityInfo.applicationInfo, vn, vc)
+                    }
                 }
             } catch (_: Exception) { countC = -2 }
 
@@ -284,6 +317,7 @@ class MainActivity : AppCompatActivity() {
             val icon: ImageView = v.findViewById(R.id.app_icon)
             val name: TextView = v.findViewById(R.id.app_name)
             val pkg: TextView = v.findViewById(R.id.app_pkg)
+            val ver: TextView = v.findViewById(R.id.app_ver)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
@@ -297,6 +331,9 @@ class MainActivity : AppCompatActivity() {
             val e = items[pos]
             h.name.text = e.label
             h.pkg.text = if (e.isSystem) "${e.packageName} · 系统" else e.packageName
+            h.ver.text = if (e.versionName.isNotEmpty()) {
+                if (e.versionCode > 0) "${e.versionName} (${e.versionCode})" else e.versionName
+            } else ""
             if (e.icon != null) h.icon.setImageDrawable(e.icon) else h.icon.setImageDrawable(null)
             h.itemView.setOnClickListener { onClick(e) }
         }
