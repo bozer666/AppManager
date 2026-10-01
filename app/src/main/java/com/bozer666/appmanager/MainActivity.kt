@@ -11,6 +11,8 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -38,6 +40,11 @@ class MainActivity : AppCompatActivity() {
     // 0 全部, 1 第三方, 2 系统
     private var tabMode = 0
     private var query = ""
+
+    // 各枚举来源返回数量（诊断用），-1 表示未完成
+    private var countA = -1
+    private var countB = -1
+    private var countC = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,28 +87,92 @@ class MainActivity : AppCompatActivity() {
             safeStart(Intent(Settings.ACTION_SETTINGS), "系统设置")
         }
 
+        // 手动输入包名直达（枚举被限制时的兜底）
+        val pkgInput = findViewById<EditText>(R.id.pkg_input)
+        findViewById<Button>(R.id.btn_go_pkg).setOnClickListener {
+            val pkg = pkgInput.text.toString().trim()
+            if (pkg.isEmpty()) {
+                toast("先输入包名")
+                return@setOnClickListener
+            }
+            showActions(AppEntry(pkg, pkg, false, null))
+        }
+        findViewById<Button>(R.id.btn_diag).setOnClickListener { showDiag() }
+
         loadApps()
+    }
+
+    private fun toEntry(pm: PackageManager, info: ApplicationInfo): AppEntry {
+        return AppEntry(
+            label = try { info.loadLabel(pm).toString() } catch (_: Exception) { info.packageName },
+            packageName = info.packageName,
+            isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+            icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
+        )
     }
 
     private fun loadApps() {
         val loading = findViewById<ProgressBar>(R.id.loading)
+        val countView = findViewById<TextView>(R.id.count)
         Thread {
             val pm = packageManager
-            val list = pm.getInstalledApplications(PackageManager.GET_META_DATA).map { info ->
-                AppEntry(
-                    label = info.loadLabel(pm).toString(),
-                    packageName = info.packageName,
-                    isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-                    icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
-                )
-            }.sortedWith(compareBy({ it.isSystem }, { it.label.lowercase() }))
+            val map = LinkedHashMap<String, AppEntry>()
+
+            // 来源 A：getInstalledApplications
+            try {
+                val listA = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                countA = listA.size
+                listA.forEach { map[it.packageName] = toEntry(pm, it) }
+            } catch (_: Exception) { countA = -2 }
+
+            // 来源 B：getInstalledPackages
+            try {
+                val listB = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+                countB = listB.size
+                listB.forEach { pkg ->
+                    val ai = pkg.applicationInfo ?: return@forEach
+                    if (!map.containsKey(pkg.packageName)) map[pkg.packageName] = toEntry(pm, ai)
+                }
+            } catch (_: Exception) { countB = -2 }
+
+            // 来源 C：launcher 可见应用
+            try {
+                val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                val listC = pm.queryIntentActivities(launcher, 0)
+                countC = listC.size
+                listC.forEach { ri ->
+                    val pkg = ri.activityInfo.packageName
+                    if (!map.containsKey(pkg)) map[pkg] = toEntry(pm, ri.activityInfo.applicationInfo)
+                }
+            } catch (_: Exception) { countC = -2 }
+
+            val list = map.values.sortedWith(compareBy({ it.isSystem }, { it.label.lowercase() }))
             runOnUiThread {
                 allApps.clear()
                 allApps.addAll(list)
                 loading.visibility = View.GONE
+                countView.text = "共 ${list.size} 个应用"
                 applyFilter()
             }
         }.start()
+    }
+
+    private fun showDiag() {
+        val msg = "getInstalledApplications: ${fmtCount(countA)}\n" +
+            "getInstalledPackages: ${fmtCount(countB)}\n" +
+            "launcher 查询: ${fmtCount(countC)}\n" +
+            "去重合并后: ${allApps.size}"
+        AlertDialog.Builder(this)
+            .setTitle("枚举诊断")
+            .setMessage(msg)
+            .setPositiveButton("确定", null)
+            .show()
+    }
+
+    private fun fmtCount(n: Int) = when (n) {
+        -1 -> "未完成"
+        -2 -> "异常"
+        else -> n.toString()
     }
 
     private fun applyFilter() {
@@ -223,7 +294,7 @@ class MainActivity : AppCompatActivity() {
             val e = items[pos]
             h.name.text = e.label
             h.pkg.text = if (e.isSystem) "${e.packageName} · 系统" else e.packageName
-            if (e.icon != null) h.icon.setImageDrawable(e.icon)
+            if (e.icon != null) h.icon.setImageDrawable(e.icon) else h.icon.setImageDrawable(null)
             h.itemView.setOnClickListener { onClick(e) }
         }
     }
