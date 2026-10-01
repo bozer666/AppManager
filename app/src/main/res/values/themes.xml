@@ -6,4 +6,7 @@
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorSecondary">#1B73E8</item>
     </style>
+    <style name="SmallTabText" parent="TextAppearance.Design.Tab">
+        <item name="android:textSize">12sp</item>
+    </style>
 </resources>

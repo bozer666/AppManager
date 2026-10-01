@@ -22,7 +22,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.tabs.TabLayout
 
@@ -55,7 +55,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         val recycler = findViewById<RecyclerView>(R.id.recycler)
-        recycler.layoutManager = LinearLayoutManager(this)
+        // 按屏幕宽度自适应列数（约每 110dp 一列，至少 2 列）
+        val span = ((resources.displayMetrics.widthPixels / resources.displayMetrics.density) / 110)
+            .toInt().coerceAtLeast(2)
+        recycler.layoutManager = GridLayoutManager(this, span)
         adapter = AppAdapter(shownApps) { entry -> showActions(entry) }
         recycler.adapter = adapter
 
