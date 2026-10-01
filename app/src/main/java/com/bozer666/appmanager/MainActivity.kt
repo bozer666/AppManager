@@ -147,11 +147,14 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) { countC = -2 }
 
             val list = map.values.sortedWith(compareBy({ it.isSystem }, { it.label.lowercase() }))
+            val ver = try {
+                packageManager.getPackageInfo(packageName, 0).versionName
+            } catch (_: Exception) { "" }
             runOnUiThread {
                 allApps.clear()
                 allApps.addAll(list)
                 loading.visibility = View.GONE
-                countView.text = "共 ${list.size} 个应用"
+                countView.text = "v$ver · 共 ${list.size} 个应用"
                 applyFilter()
             }
         }.start()
