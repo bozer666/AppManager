@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity() {
     private val shownApps = mutableListOf<AppEntry>()
     private lateinit var adapter: AppAdapter
 
-    // 0 全部, 1 第三方, 2 系统
+    // 0 第三方, 1 系统（默认显示用户安装的应用）
     private var tabMode = 0
     private var query = ""
 
@@ -207,7 +207,7 @@ class MainActivity : AppCompatActivity() {
         val q = query.lowercase()
         shownApps.clear()
         shownApps.addAll(allApps.filter { e ->
-            (tabMode == 0 || (tabMode == 1) != e.isSystem) &&
+            (tabMode == 1) == e.isSystem &&
                 (q.isEmpty() || e.label.lowercase().contains(q) || e.packageName.lowercase().contains(q))
         })
         adapter.notifyDataSetChanged()
@@ -261,10 +261,17 @@ class MainActivity : AppCompatActivity() {
                         if (launch != null) safeStart(launch, "打开应用")
                         else toast("这个应用没有可启动的界面")
                     }
-                    6 -> safeStart(
-                        Intent(Intent.ACTION_DELETE, Uri.parse("package:${entry.packageName}")),
-                        "卸载"
-                    )
+                    6 -> AlertDialog.Builder(this)
+                        .setTitle("卸载应用")
+                        .setMessage("确定卸载「${entry.label}」吗？")
+                        .setPositiveButton("卸载") { _, _ ->
+                            safeStart(
+                                Intent(Intent.ACTION_DELETE, Uri.parse("package:${entry.packageName}")),
+                                "卸载"
+                            )
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
                     7 -> {
                         toast("请在「存储」中清除数据")
                         openAppInfo(entry)
